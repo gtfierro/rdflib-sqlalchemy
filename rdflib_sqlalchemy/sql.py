@@ -62,14 +62,17 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
                 cols = [c.subject, c.predicate, c.object]
             else:
                 raise ValueError('Unrecognized table type {}'.format(tableType))
-            select_clause = expression.select(functions.count().label('aCount')).select_from(
-                expression.select(*cols).distinct().where(whereClause).select_from(table).subquery())
+            subexpr = expression.select(*cols).distinct()
+            if whereClause is not None:
+                subexpr = subexpr.where(whereClause)
+            subexpr = subexpr.select_from(table).subquery()
+            select_clause = expression.select(functions.count().label('aCount')).select_from(subexpr)
         elif select_type == CONTEXT_SELECT:
             select_clause = expression.select(table.c.context)
-            if whereClause:
+            if whereClause is not None:
                 select_clause = select_clause.where(whereClause)
         elif tableType in FULL_TRIPLE_PARTITIONS:
-            select_clause = table.select().where(whereClause)
+            select_clause = table.select().where(whereClause) if whereClause is not None else table.select()
         elif tableType == ASSERTED_TYPE_PARTITION:
             select_clause = expression.select(
                 *[table.c.id.label("id"),
@@ -79,13 +82,17 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
                  table.c.context.label("context"),
                  table.c.termComb.label("termcomb"),
                  expression.literal_column("NULL").label("objlanguage"),
-                 expression.literal_column("NULL").label("objdatatype")]).where(whereClause)
+                 expression.literal_column("NULL").label("objdatatype")])
+            if whereClause is not None:
+                select_clause = select_clause.where(whereClause)
         elif tableType == ASSERTED_NON_TYPE_PARTITION:
             select_clause = expression.select(
                 *[c for c in table.columns],
                 expression.literal_column("NULL").label("objlanguage"),
                  expression.literal_column("NULL").label("objdatatype")
-             ).where(whereClause).select_from(table)
+             ).select_from(table)
+            if whereClause is not None:
+                select_clause = select_clause.where(whereClause)
 
         selects.append(select_clause)
 
