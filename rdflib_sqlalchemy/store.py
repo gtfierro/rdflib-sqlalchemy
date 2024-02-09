@@ -396,7 +396,10 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                     if not self.STRONGLY_TYPED_TERMS or isinstance(obj, Literal):
                         # remove literal triple
                         clause = self.build_clause(literal_table, subject, predicate, obj, context)
-                        connection.execute(literal_table.delete().where(clause))
+                        if clause is not None:
+                            connection.execute(literal_table.delete().where(clause))
+                        else:
+                            connection.execute(literal_table.delete())
 
                     for table in [quoted_table, asserted_table]:
                         # If asserted non rdf:type table and obj is Literal,
@@ -405,16 +408,25 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                             continue
                         else:
                             clause = self.build_clause(table, subject, predicate, obj, context)
-                            connection.execute(table.delete().where(clause))
+                            if clause is not None:
+                                connection.execute(table.delete().where(clause))
+                            else:
+                                connection.execute(table.delete())
 
                 if predicate == RDF.type or predicate is None:
                     # Need to check rdf:type and quoted partitions (in addition
                     # perhaps)
                     clause = self.build_clause(asserted_type_table, subject, RDF.type, obj, context, True)
-                    connection.execute(asserted_type_table.delete().where(clause))
+                    if clause is not None:
+                        connection.execute(asserted_type_table.delete().where(clause))
+                    else:
+                        connection.execute(asserted_type_table.delete())
 
                     clause = self.build_clause(quoted_table, subject, predicate, obj, context)
-                    connection.execute(quoted_table.delete().where(clause))
+                    if clause is not None:
+                        connection.execute(quoted_table.delete().where(clause))
+                    else:
+                        connection.execute(quoted_table.delete())
             except Exception:
                 _logger.exception("Removal failed.")
                 raise
@@ -754,7 +766,10 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                 for table in [quoted_table, asserted_table,
                               asserted_type_table, literal_table]:
                     clause = self.build_context_clause(context, table)
-                    connection.execute(table.delete().where(clause))
+                    if clause is not None:
+                        connection.execute(table.delete().where(clause))
+                    else:
+                        connection.execute(table.delete())
             except Exception:
                 _logger.exception("Context removal failed.")
                 raise
