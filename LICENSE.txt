@@ -3,6 +3,7 @@ LICENSE AGREEMENT FOR rdflib-sqlalchemy
 Copyright (c) 2012-2020, Graham Higgins, Adam Ever-Hadani
 See CONTRIBUTORS.md and http://github.com/RDFLib/rdflib-sqlalchemy
 All rights reserved.
+Updates to rdflib-sqlalchemy in this repository are by Gabe Fierro.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are

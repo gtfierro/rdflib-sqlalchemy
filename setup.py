@@ -1,19 +1,19 @@
 #!/usr/bin/env python
 from setuptools import setup
 
-project = "rdflib-sqlalchemy"
-version = "0.5.5.dev0"
+project = "brickschema-rdflib-sqlalchemy"
+version = "0.6.0a8"
 
 
 setup(
     name=project,
     version=version,
     description="rdflib extension adding SQLAlchemy as an AbstractSQLStore back-end store",
-    author="Graham Higgins, Adam Ever-Hadani",
-    author_email="gjhiggins@gmail.com, adamhadani@globality.com",
-    url="http://github.com/RDFLib/rdflib-sqlalchemy",
+    author="Gabe Fierro, Graham Higgins, Adam Ever-Hadani",
+    author_email="gtfierro@mines.edu, gjhiggins@gmail.com, adamhadani@globality.com",
+    url="http://github.com/gtfierro/rdflib-sqlalchemy",
     packages=["rdflib_sqlalchemy"],
-    download_url="https://github.com/RDFLib/rdflib-sqlalchemy/zipball/master",
+    download_url="https://github.com/gtfierro/rdflib-sqlalchemy/zipball/master",
     license="BSD",
     platforms=["any"],
     long_description="""
@@ -50,7 +50,7 @@ setup(
     ],
     entry_points={
         'rdf.plugins.store': [
-            'SQLAlchemy = rdflib_sqlalchemy.store:SQLAlchemy'
+            'SQLAlchemy = brickschema_rdflib_sqlalchemy.store:SQLAlchemy'
         ]
     }
 )
