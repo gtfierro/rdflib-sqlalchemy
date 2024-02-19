@@ -50,7 +50,7 @@ setup(
     ],
     entry_points={
         'rdf.plugins.store': [
-            'SQLAlchemy = brickschema_rdflib_sqlalchemy.store:SQLAlchemy'
+            'SQLAlchemy = rdflib_sqlalchemy.store:SQLAlchemy'
         ]
     }
 )
