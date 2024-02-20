@@ -2,7 +2,7 @@
 from setuptools import setup
 
 project = "brickschema-rdflib-sqlalchemy"
-version = "0.6.0a8"
+version = "0.6.0a9"
 
 
 setup(
