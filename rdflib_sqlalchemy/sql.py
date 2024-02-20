@@ -82,6 +82,7 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
                  table.c.klass.label("object"),
                  table.c.context.label("context"),
                  table.c.termComb.label("termcomb"),
+                 expression.literal_column("NULL").label("objlanguage"),
                  expression.literal_column("NULL").label("objdatatype")]).where(
                 whereClause)
         elif tableType == ASSERTED_NON_TYPE_PARTITION:
