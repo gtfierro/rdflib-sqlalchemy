@@ -53,7 +53,7 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
     """
     selects = []
     for table, whereClause, tableType in select_components:
-        # TODO: if whereClause is None, skip calling 'where'
+
         if select_type == COUNT_SELECT:
             c = table.c
             if tableType == ASSERTED_TYPE_PARTITION:
@@ -62,17 +62,14 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
                 cols = [c.subject, c.predicate, c.object]
             else:
                 raise ValueError('Unrecognized table type {}'.format(tableType))
-            inner_select = expression.select(*cols)
-            if whereClause is not None:
-                inner_select = expression.select(*cols).where(whereClause)
-            inner_select = inner_select.distinct().select_from(table).alias()
-            select_clause = expression.select(expression.func.count().label('aCount')).select_from(inner_select)
+            select_clause = expression.select(*[functions.count().label('aCount')]).select_from(
+                expression.select(*cols).where(whereClause).distinct().select_from(table))
         elif select_type == CONTEXT_SELECT:
             select_clause = expression.select(table.c.context)
             if whereClause is not None:
                 select_clause = expression.select(table.c.context).where(whereClause)
         elif tableType in FULL_TRIPLE_PARTITIONS:
-            select_clause = table.select().where(whereClause) if whereClause is not None else table.select()
+            select_clause = table.select().where(whereClause)
         elif tableType == ASSERTED_TYPE_PARTITION:
             select_clause = expression.select(
                 *[table.c.id.label("id"),
@@ -82,9 +79,8 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
                  table.c.context.label("context"),
                  table.c.termComb.label("termcomb"),
                  expression.literal_column("NULL").label("objlanguage"),
-                 expression.literal_column("NULL").label("objdatatype")])
-            if whereClause is not None:
-                select_clause = select_clause.where(whereClause)
+                 expression.literal_column("NULL").label("objdatatype")]).where(
+                whereClause)
         elif tableType == ASSERTED_NON_TYPE_PARTITION:
             all_table_columns = [c for c in table.columns] + \
                                 [expression.literal_column("NULL").label("objlanguage"),
