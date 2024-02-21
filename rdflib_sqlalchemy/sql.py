@@ -64,12 +64,15 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
                 raise ValueError('Unrecognized table type {}'.format(tableType))
             select_clause = expression.select(*[functions.count().label('aCount')]).select_from(
                 expression.select(*cols).where(whereClause).distinct().select_from(table))
+            print(select_clause.compile().string)
         elif select_type == CONTEXT_SELECT:
             select_clause = expression.select(table.c.context)
             if whereClause is not None:
                 select_clause = expression.select(table.c.context).where(whereClause)
         elif tableType in FULL_TRIPLE_PARTITIONS:
-            select_clause = table.select().where(whereClause)
+            select_clause = table.select()
+            if whereClause is not None:
+                select_clause = select_clause.where(whereClause)
         elif tableType == ASSERTED_TYPE_PARTITION:
             select_clause = expression.select(
                 *[table.c.id.label("id"),
@@ -79,8 +82,9 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
                  table.c.context.label("context"),
                  table.c.termComb.label("termcomb"),
                  expression.literal_column("NULL").label("objlanguage"),
-                 expression.literal_column("NULL").label("objdatatype")]).where(
-                whereClause)
+                 expression.literal_column("NULL").label("objdatatype")])
+            if whereClause is not None:
+                select_clause = select_clause.where(whereClause)
         elif tableType == ASSERTED_NON_TYPE_PARTITION:
             all_table_columns = [c for c in table.columns] + \
                                 [expression.literal_column("NULL").label("objlanguage"),
