@@ -64,7 +64,7 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
                 raise ValueError('Unrecognized table type {}'.format(tableType))
             inner_select = expression.select(*cols)
             if whereClause is not None:
-                inner_select = inner_select.where(whereClause)
+                inner_select = expression.select(*cols).where(whereClause)
             inner_select = inner_select.distinct().select_from(table).alias()
             select_clause = expression.select(expression.func.count().label('aCount')).select_from(inner_select)
         elif select_type == CONTEXT_SELECT:
