@@ -67,9 +67,9 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
         elif select_type == CONTEXT_SELECT:
             select_clause = expression.select(table.c.context)
             if whereClause is not None:
-                select_clause = select_clause.where(whereClause)
+                select_clause = expression.select(table.c.context).where(whereClause)
         elif tableType in FULL_TRIPLE_PARTITIONS:
-            select_clause = table.select().where(whereClause) if whereClause is not None else table.select()
+            select_clause = table.select().where(whereClause)
         elif tableType == ASSERTED_TYPE_PARTITION:
             select_clause = expression.select(
                 *[table.c.id.label("id"),
