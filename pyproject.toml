@@ -1,0 +1,6 @@
+# The package metadata lives in setup.py. Don't add a [project] table here: setuptools gives
+# it precedence over setup.py, so its `dependencies` silently replace `install_requires`.
+# That is how 0.6.2 was published with flake8, tox, pytest and setuptools as runtime dependencies.
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

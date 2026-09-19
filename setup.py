@@ -2,7 +2,7 @@
 from setuptools import setup
 
 project = "brickschema-rdflib-sqlalchemy"
-version = "0.6.0"
+version = "0.6.3"
 
 
 setup(
@@ -49,6 +49,13 @@ setup(
         "SQLAlchemy>=2.0.23",
         "importlib-metadata; python_version < '3.8'",
     ],
+    extras_require={
+        "dev": [
+            "flake8>=5.0.4",
+            "pytest>=8.0.0",
+            "tox>=4.12.1",
+        ],
+    },
     entry_points={
         'rdf.plugins.store': [
             'SQLAlchemy = rdflib_sqlalchemy.store:SQLAlchemy'
