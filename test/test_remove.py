@@ -1,12 +1,6 @@
 import pytest
-from rdflib import BNode, ConjunctiveGraph, Literal, URIRef, plugin
+from rdflib import BNode, ConjunctiveGraph, Literal, URIRef
 from rdflib.namespace import RDF, XSD
-from rdflib.store import Store
-
-from rdflib_sqlalchemy import registerplugins
-
-
-registerplugins()
 
 ex = "http://example.org/"
 s = URIRef(ex + "s")
@@ -25,14 +19,11 @@ triples = [
 
 
 @pytest.fixture
-def graph(tmp_path):
-    store = plugin.get("SQLAlchemy", Store)(identifier=URIRef("test"))
-    store.open(Literal("sqlite:///%s" % (tmp_path / "test.db")), create=True)
+def graph(store):
     graph = ConjunctiveGraph(store).get_context(g)
     for t in triples:
         graph.add(t)
-    yield graph
-    store.close()
+    return graph
 
 
 @pytest.mark.parametrize("removed", triples)

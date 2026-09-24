@@ -16,6 +16,7 @@ from rdflib.namespace import RDF
 from rdflib.plugins.stores.regexmatching import PYTHON_REGEX, REGEXTerm
 from rdflib.store import CORRUPTED_STORE, VALID_STORE, NodePickler, Store
 from sqlalchemy import MetaData, inspect
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import bindparam, expression, select, delete
 from sqlalchemy.exc import OperationalError
 
@@ -399,8 +400,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
         elif self.engine.name == 'mysql':
             statement = statement.prefix_with('IGNORE')
         elif self.engine.name == 'postgresql':
-            from sqlalchemy.dialects.postgresql.dml import OnConflictDoNothing
-            statement._post_values_clause = OnConflictDoNothing()
+            statement = postgresql.insert(statement.table).on_conflict_do_nothing()
         return statement
 
     def remove(self, triple, context):

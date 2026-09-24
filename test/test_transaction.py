@@ -1,25 +1,11 @@
 import pytest
-from rdflib import ConjunctiveGraph, Literal, URIRef, plugin
-from rdflib.store import Store
-
-from rdflib_sqlalchemy import registerplugins
-
-
-registerplugins()
+from rdflib import ConjunctiveGraph, Literal, URIRef
 
 graph_id = URIRef("http://example.org/g")
 triples = [
     (URIRef("http://example.org/s%d" % i), URIRef("http://example.org/p"), Literal(i))
     for i in range(5)
 ]
-
-
-@pytest.fixture
-def store(tmp_path):
-    store = plugin.get("SQLAlchemy", Store)(identifier=URIRef("test"))
-    store.open(Literal("sqlite:///%s" % (tmp_path / "test.db")), create=True)
-    yield store
-    store.close()
 
 
 def test_rollback_on_exception(store):
