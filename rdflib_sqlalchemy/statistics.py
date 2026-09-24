@@ -30,7 +30,7 @@ class StatisticsMixin:
             "store": dict(total_num_statements=len(self)),
         }
 
-        with self.engine.connect() as connection:
+        with self._connect() as connection:
             session = Session(bind=connection)
             if asserted_statements:
                 table = self.tables["asserted_statements"]

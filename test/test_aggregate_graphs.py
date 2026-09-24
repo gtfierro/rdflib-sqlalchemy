@@ -10,7 +10,7 @@ from rdflib.graph import ConjunctiveGraph
 from rdflib.graph import Graph
 from rdflib.graph import ReadOnlyGraphAggregate
 from rdflib.store import Store
-from six.moves import cStringIO as StringIO
+from io import StringIO
 
 
 plugin.register(
