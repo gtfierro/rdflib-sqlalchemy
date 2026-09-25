@@ -11,4 +11,4 @@ def test_no_development_tools_in_runtime_requirements():
         for requirement in requirements
         if "extra ==" not in requirement
     }
-    assert runtime <= {"alembic", "rdflib", "six", "sqlalchemy", "importlib-metadata"}
+    assert runtime <= {"rdflib", "six", "sqlalchemy", "importlib-metadata"}
