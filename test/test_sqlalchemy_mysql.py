@@ -13,11 +13,10 @@ from . import graph_case
 
 
 try:
-    import MySQLdb
-    assert MySQLdb
-    dialect = "mysqldb"
+    import pymysql
+    assert pymysql
 except ImportError:
-    pytest.skip("MySQLdb not found, skipping MySQL tests",
+    pytest.skip("PyMySQL not found, skipping MySQL tests",
             allow_module_level=True)
 
 
@@ -30,7 +29,7 @@ _logger = logging.getLogger(__name__)
 
 sqlalchemy_url = Literal(os.environ.get(
     "DBURI",
-    "mysql+%s://root@127.0.0.1:3306/test?charset=utf8" % dialect))
+    "mysql+pymysql://root@127.0.0.1:3306/test?charset=utf8mb4"))
 
 
 class SQLAMySQLGraphTestCase(graph_case.GraphTestCase):

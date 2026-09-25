@@ -1,4 +1,6 @@
 """Convenience functions for working with Terms and Graphs."""
+from functools import lru_cache
+
 from rdflib import BNode, Graph, Literal, URIRef, Variable
 from rdflib.graph import QuotedGraph
 
@@ -15,6 +17,9 @@ SUBJECT = 0
 PREDICATE = 1
 OBJECT = 2
 CONTEXT = 3
+
+# Max number of distinct terms kept by create_term
+TERM_CACHE_SIZE = 100000
 
 GRAPH_TERM_DICT = {
     "F": (QuotedGraph, URIRef),
@@ -220,65 +225,14 @@ def create_term(termString, termType, store, objLanguage=None, objDatatype=None)
 
     QuotedGraphs are instantiated differently
     """
+    if termType == "F":
+        return QuotedGraph(store, URIRef(termString))
+    return _create_cached_term(termString, termType, objLanguage, objDatatype)
+
+
+@lru_cache(maxsize=TERM_CACHE_SIZE)
+def _create_cached_term(termString, termType, objLanguage, objDatatype):
+    # Terms are immutable values, so one bounded cache can be shared by every store
     if termType == "L":
-        cache = store.literalCache.get((termString, objLanguage, objDatatype))
-        if cache is not None:
-            # store.cacheHits += 1
-            return cache
-        else:
-            # store.cacheMisses += 1
-            # rt = Literal(termString, objLanguage, objDatatype)
-            # store.literalCache[((termString, objLanguage, objDatatype))] = rt
-            if objLanguage and not objDatatype:
-                rt = Literal(termString, objLanguage)
-                store.literalCache[((termString, objLanguage))] = rt
-            elif objDatatype and not objLanguage:
-                rt = Literal(termString, datatype=objDatatype)
-                store.literalCache[((termString, objDatatype))] = rt
-            elif not objLanguage and not objDatatype:
-                rt = Literal(termString)
-                store.literalCache[((termString))] = rt
-            else:
-                rt = Literal(termString, objDatatype)
-                store.literalCache[((termString, objDatatype))] = rt
-            return rt
-    elif termType == "F":
-        cache = store.otherCache.get((termType, termString))
-        if cache is not None:
-            # store.cacheHits += 1
-            return cache
-        else:
-            # store.cacheMisses += 1
-            rt = QuotedGraph(store, URIRef(termString))
-            store.otherCache[(termType, termString)] = rt
-            return rt
-    elif termType == "B":
-        cache = store.bnodeCache.get((termString))
-        if cache is not None:
-            # store.cacheHits += 1
-            return cache
-        else:
-            # store.cacheMisses += 1
-            rt = TERM_INSTANTIATION_DICT[termType](termString)
-            store.bnodeCache[(termString)] = rt
-            return rt
-    elif termType == "U":
-        cache = store.uriCache.get((termString))
-        if cache is not None:
-            # store.cacheHits += 1
-            return cache
-        else:
-            # store.cacheMisses += 1
-            rt = URIRef(termString)
-            store.uriCache[(termString)] = rt
-            return rt
-    else:
-        cache = store.otherCache.get((termType, termString))
-        if cache is not None:
-            # store.cacheHits += 1
-            return cache
-        else:
-            # store.cacheMisses += 1
-            rt = TERM_INSTANTIATION_DICT[termType](termString)
-            store.otherCache[(termType, termString)] = rt
-            return rt
+        return Literal(termString, lang=objLanguage or None, datatype=objDatatype or None)
+    return TERM_INSTANTIATION_DICT[termType](termString)

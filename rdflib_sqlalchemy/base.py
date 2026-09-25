@@ -113,15 +113,16 @@ class SQLGeneratorMixin(object):
 
     def build_literal_datatype_clause(self, obj, table):
         """Build Literal and datatype clause."""
-        if isinstance(obj, Literal) and obj.datatype is not None:
-            return table.c.objDatatype == obj.datatype
+        if isinstance(obj, Literal):
+            # A Literal without a datatype must not match typed literals with the same lexical form
+            return table.c.objDatatype == obj.datatype if obj.datatype is not None else table.c.objDatatype.is_(None)
         else:
             return None
 
     def build_literal_language_clause(self, obj, table):
         """Build Literal and language clause."""
-        if isinstance(obj, Literal) and obj.language is not None:
-            return table.c.objLanguage == obj.language
+        if isinstance(obj, Literal):
+            return table.c.objLanguage == obj.language if obj.language is not None else table.c.objLanguage.is_(None)
         else:
             return None
 

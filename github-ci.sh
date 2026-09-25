@@ -10,7 +10,7 @@ if [ "$DB" = 'pgsql' ]; then
 fi
 
 if [ "$DB" = 'mysql' ]; then
-    export DBURI='mysql+mysqldb://test:mysql@127.0.0.1/test?charset=utf8'
+    export DBURI='mysql+pymysql://test:mysql@127.0.0.1/test?charset=utf8mb4'
 fi
 
 if [ "$DB" = 'sqlite' ]; then

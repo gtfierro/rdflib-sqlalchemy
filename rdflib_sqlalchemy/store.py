@@ -1,4 +1,6 @@
 """SQLAlchemy-based RDF store."""
+import contextlib
+import contextvars
 import hashlib
 import logging
 
@@ -13,9 +15,9 @@ from rdflib.graph import Graph, QuotedGraph
 from rdflib.namespace import RDF
 from rdflib.plugins.stores.regexmatching import PYTHON_REGEX, REGEXTerm
 from rdflib.store import CORRUPTED_STORE, VALID_STORE, NodePickler, Store
-from six import text_type
 from sqlalchemy import MetaData, inspect
-from sqlalchemy.sql import expression, select, delete
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql import bindparam, expression, select, delete
 from sqlalchemy.exc import OperationalError
 
 from rdflib_sqlalchemy.constants import (
@@ -30,6 +32,7 @@ from rdflib_sqlalchemy.constants import (
 )
 from rdflib_sqlalchemy.tables import (
     create_asserted_statements_table,
+    create_graphs_table,
     create_literal_statements_table,
     create_namespace_binds_table,
     create_quoted_statements_table,
@@ -92,7 +95,8 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
 
     context_aware = True
     formula_aware = True
-    transaction_aware = True
+    graph_aware = True
+    transaction_aware = False
     regex_matching = PYTHON_REGEX
     configuration = Literal("sqlite://")
 
@@ -131,13 +135,9 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
         # regardless of what the object of the triple pattern is
         self.STRONGLY_TYPED_TERMS = False
 
-        self.cacheHits = 0
-        self.cacheMisses = 0
-        self.literalCache = {}
-        self.uriCache = {}
-        self.bnodeCache = {}
-        self.otherCache = {}
         self._node_pickler = None
+        # Connection shared by all store operations inside a transaction() block
+        self._active_conn = contextvars.ContextVar("rdflib_sqlalchemy_conn", default=None)
 
         self._create_table_definitions()
 
@@ -160,7 +160,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
         ]
         q = union_select(selects, distinct=False, select_type=COUNT_SELECT)
         if hasattr(self, "engine"):
-            with self.engine.connect() as connection:
+            with self._connect() as connection:
                 res = connection.execute(q)
                 rt = res.fetchall()
                 typeLen, quotedLen, assertedLen, literalLen = [
@@ -216,10 +216,38 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                  ASSERTED_LITERAL_PARTITION), ]
             q = union_select(selects, distinct=False, select_type=COUNT_SELECT)
 
-        with self.engine.connect() as connection:
+        with self._connect() as connection:
             res = connection.execute(q)
             rt = res.fetchall()
             return int(sum(rtTuple[0] for rtTuple in rt))
+
+    @contextlib.contextmanager
+    def transaction(self):
+        """
+        Run every store operation in this block on one connection and one transaction.
+
+        The transaction commits when the block exits normally and rolls back if it raises.
+        Nested calls reuse the outer transaction. Yields the `sqlalchemy.engine.Connection`
+        so callers can execute their own statements in the same transaction.
+        """
+        conn = self._active_conn.get()
+        if conn is not None:
+            yield conn
+            return
+        with self.engine.begin() as conn:
+            token = self._active_conn.set(conn)
+            try:
+                yield conn
+            finally:
+                self._active_conn.reset(token)
+
+    def _begin(self):
+        conn = self._active_conn.get()
+        return contextlib.nullcontext(conn) if conn is not None else self.engine.begin()
+
+    def _connect(self):
+        conn = self._active_conn.get()
+        return contextlib.nullcontext(conn) if conn is not None else self.engine.connect()
 
     @property
     def table_names(self):
@@ -284,6 +312,9 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                     self.create_all()
 
                 ret_value = self._verify_store_exists()
+                if ret_value == VALID_STORE:
+                    # Stores created before the graphs table existed don't have it yet
+                    self.tables["graphs"].create(self.engine, checkfirst=True)
 
         if ret_value != VALID_STORE and not create:
             raise RuntimeError("open() - create flag was set to False, but store was not created previously.")
@@ -328,7 +359,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
         )
 
         statement = self._add_ignore_on_conflict(statement)
-        with self.engine.begin() as connection:
+        with self._begin() as connection:
             try:
                 connection.execute(statement, params)
             except Exception:
@@ -354,7 +385,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
             command_dict.setdefault("statement", statement)
             command_dict.setdefault("params", []).append(params)
 
-        with self.engine.begin() as connection:
+        with self._begin() as connection:
             try:
                 for command in commands_dict.values():
                     statement = self._add_ignore_on_conflict(command['statement'])
@@ -369,8 +400,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
         elif self.engine.name == 'mysql':
             statement = statement.prefix_with('IGNORE')
         elif self.engine.name == 'postgresql':
-            from sqlalchemy.dialects.postgresql.dml import OnConflictDoNothing
-            statement._post_values_clause = OnConflictDoNothing()
+            statement = postgresql.insert(statement.table).on_conflict_do_nothing()
         return statement
 
     def remove(self, triple, context):
@@ -379,7 +409,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
         subject, predicate, obj = triple
 
         if context is not None:
-            if subject is None and predicate is None and object is None:
+            if subject is None and predicate is None and obj is None:
                 self._remove_context(context)
                 return
 
@@ -388,12 +418,12 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
         asserted_type_table = self.tables["type_statements"]
         literal_table = self.tables["literal_statements"]
 
-        with self.engine.begin() as connection:
+        with self._begin() as connection:
             try:
                 if predicate is None or predicate != RDF.type:
                     # Need to remove predicates other than rdf:type
 
-                    if not self.STRONGLY_TYPED_TERMS or isinstance(obj, Literal):
+                    if self._may_match_literal(obj):
                         # remove literal triple
                         clause = self.build_clause(literal_table, subject, predicate, obj, context)
                         query = literal_table.delete().where(clause) if clause is not None else literal_table.delete()
@@ -423,6 +453,56 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                 _logger.exception("Removal failed.")
                 raise
 
+    def removeN(self, quads):
+        """
+        Remove a batch of quads, issuing one DELETE per table rather than several per triple.
+
+        Each quad is removed from the table `add` would have put it in. Quads with a
+        wildcard (None) fall back to `remove`.
+        """
+        remove_event = super(SQLAlchemy, self).remove
+        batches = {}
+        wildcards = []
+        for subject, predicate, obj, context in quads:
+            if subject is None or predicate is None or obj is None or context is None:
+                wildcards.append(((subject, predicate, obj), context))
+                continue
+            remove_event((subject, predicate, obj), context)
+            quoted = isinstance(context, QuotedGraph)
+            command_type, _, params = self._get_build_command((subject, predicate, obj), context, quoted)
+            table = self.tables[{
+                "literal": "literal_statements",
+                "type": "type_statements",
+                "other": "quoted_statements" if quoted else "asserted_statements",
+            }[command_type]]
+            params = {"b_" + key: value for key, value in params.items() if key != "termComb"}
+            batches.setdefault(table, []).append(params)
+
+        with self.transaction() as connection:
+            try:
+                for table, params in batches.items():
+                    clauses = []
+                    for column in table.c:
+                        if column.key in ("id", "termComb"):
+                            continue
+                        param = bindparam("b_" + column.key)
+                        clauses.append(column.is_not_distinct_from(param) if column.nullable else column == param)
+                    connection.execute(table.delete().where(expression.and_(*clauses)), params)
+            except Exception:
+                _logger.exception("RemoveN failed.")
+                raise
+            for triple, context in wildcards:
+                self.remove(triple, context)
+
+    @staticmethod
+    def _may_match_literal(obj):
+        """Whether an object pattern can match rows in the literal table."""
+        # A concrete URIRef/BNode must not match a literal that has the same text
+        if isinstance(obj, (list, tuple)):
+            # triples_choices passes a sequence of objects
+            return any(SQLAlchemy._may_match_literal(o) for o in obj)
+        return obj is None or isinstance(obj, (Literal, REGEXTerm))
+
     def _triples_helper(self, triple, context=None):
         subject, predicate, obj = triple
 
@@ -449,10 +529,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
             # Literal partition if (obj is Literal or None) and asserted
             # non rdf:type partition (if obj is URIRef or None)
             selects = []
-            if (not self.STRONGLY_TYPED_TERMS
-                    or isinstance(obj, Literal)
-                    or obj is None
-                    or (self.STRONGLY_TYPED_TERMS and isinstance(obj, REGEXTerm))):
+            if self._may_match_literal(obj):
                 literal = expression.alias(literal_table, "literal")
                 clause = self.build_clause(literal, subject, predicate, obj, context)
                 selects.append((literal, clause, ASSERTED_LITERAL_PARTITION))
@@ -473,10 +550,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
             # quoted partition (if context is specified), and literal
             # partition (optionally)
             selects = []
-            if not self.STRONGLY_TYPED_TERMS \
-                    or isinstance(obj, Literal) \
-                    or obj is None \
-                    or (self.STRONGLY_TYPED_TERMS and isinstance(obj, REGEXTerm)):
+            if self._may_match_literal(obj):
                 literal = expression.alias(literal_table, "literal")
                 clause = self.build_clause(literal, subject, predicate, obj, context)
                 selects.append((literal, clause, ASSERTED_LITERAL_PARTITION))
@@ -496,7 +570,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
 
     def _do_triples_select(self, selects, context):
         q = union_select(selects, distinct=True, select_type=TRIPLE_SELECT_NO_ORDER)
-        with self.engine.connect() as connection:
+        with self._connect() as connection:
             res = connection.execute(q)
             # TODO: False but it may have limitations on text column. Check
             # NOTE: SQLite does not support ORDER BY terms that aren't
@@ -504,12 +578,16 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
             # to be able to return a generator of contexts
             result = res.fetchall()
         tripleCoverage = {}
+        # Building a Graph is expensive, so make one per distinct context rather than per row
+        graphs = {}
 
         for rt in result:
             id, s, p, o, (graphKlass, idKlass, graphId) = extract_triple(rt, self, context)
-            contexts = tripleCoverage.get((s, p, o), [])
-            contexts.append(graphKlass(self, idKlass(graphId)))
-            tripleCoverage[(s, p, o)] = contexts
+            graph_key = (graphKlass, idKlass, graphId)
+            graph = graphs.get(graph_key)
+            if graph is None:
+                graph = graphs[graph_key] = graphKlass(self, idKlass(graphId))
+            tripleCoverage.setdefault((s, p, o), []).append(graph)
 
         for (s, p, o), contexts in tripleCoverage.items():
             yield (s, p, o), (c for c in contexts)
@@ -588,10 +666,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                 clause = self.build_clause(typetable, subject, RDF.type, obj, Any, True)
                 selects = [(typetable, clause, ASSERTED_TYPE_PARTITION), ]
 
-                if (not self.STRONGLY_TYPED_TERMS or
-                        isinstance(obj, Literal) or
-                        obj is None or
-                        (self.STRONGLY_TYPED_TERMS and isinstance(obj, REGEXTerm))):
+                if self._may_match_literal(obj):
                     clause = self.build_clause(literal, subject, predicate, obj)
                     selects.append(
                         (literal, clause, ASSERTED_LITERAL_PARTITION))
@@ -606,9 +681,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                 # quoted partition (if context is specified), and literal
                 # partition (optionally)
                 selects = []
-                if (not self.STRONGLY_TYPED_TERMS or
-                        isinstance(obj, Literal) or obj is None or (
-                            self.STRONGLY_TYPED_TERMS and isinstance(obj, REGEXTerm))):
+                if self._may_match_literal(obj):
                     clause = self.build_clause(literal, subject, predicate, obj)
                     selects.append(
                         (literal, clause, ASSERTED_LITERAL_PARTITION))
@@ -630,21 +703,36 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                 (literal, None, ASSERTED_LITERAL_PARTITION), ]
             q = union_select(selects, distinct=True, select_type=CONTEXT_SELECT)
 
-        with self.engine.connect() as connection:
-            res = connection.execute(q)
-            rt = res.fetchall()
-        for context in [rtTuple[0] for rtTuple in rt]:
+        with self._connect() as connection:
+            contexts = [row[0] for row in connection.execute(q)]
+            if triple is None:
+                # Graphs added with add_graph are listed even when empty
+                contexts.extend(row[0] for row in connection.execute(select(self.tables["graphs"].c.context)))
+        for context in dict.fromkeys(contexts):
             yield URIRef(context)
+
+    def add_graph(self, graph):
+        """Register a graph so it is listed by `contexts` even while empty."""
+        statement = self._add_ignore_on_conflict(self.tables["graphs"].insert())
+        with self._begin() as connection:
+            connection.execute(statement, {"context": graph.identifier})
+
+    def remove_graph(self, graph):
+        """Remove a graph and all of its triples."""
+        graphs_table = self.tables["graphs"]
+        with self.transaction() as connection:
+            self._remove_context(graph)
+            connection.execute(graphs_table.delete().where(graphs_table.c.context == graph.identifier))
 
     # Namespace persistence interface implementation
 
     def bind(self, prefix, namespace, override=False):
         """Bind prefix for namespace."""
-        with self.engine.begin() as connection:
+        with self._begin() as connection:
             try:
                 binds_table = self.tables["namespace_binds"]
-                prefix = text_type(prefix)
-                namespace = text_type(namespace)
+                prefix = str(prefix)
+                namespace = str(namespace)
                 connection.execute(delete(binds_table).where(
                     expression.or_(binds_table.c.uri == namespace,
                         binds_table.c.prefix == prefix)))
@@ -655,9 +743,9 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
 
     def prefix(self, namespace):
         """Prefix."""
-        with self.engine.begin() as connection:
+        with self._connect() as connection:
             nb_table = self.tables["namespace_binds"]
-            namespace = text_type(namespace)
+            namespace = str(namespace)
             s = select(nb_table.c.prefix).where(nb_table.c.uri == namespace)
             res = connection.execute(s)
             rt = [rtTuple[0] for rtTuple in res.fetchall()]
@@ -668,9 +756,9 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
 
     def namespace(self, prefix):
         res = None
-        prefix_val = text_type(prefix)
+        prefix_val = str(prefix)
         try:
-            with self.engine.begin() as connection:
+            with self._connect() as connection:
                 nb_table = self.tables["namespace_binds"]
                 s = select(nb_table.c.uri).where(nb_table.c.prefix == prefix_val)
                 res = connection.execute(s)
@@ -682,7 +770,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
             return None
 
     def namespaces(self):
-        with self.engine.begin() as connection:
+        with self._connect() as connection:
             res = connection.execute(self.tables["namespace_binds"].select().distinct())
             for prefix, uri in res.fetchall():
                 yield prefix, uri
@@ -697,6 +785,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
             "literal_statements": create_literal_statements_table(self._interned_id, self.metadata),
             "quoted_statements": create_quoted_statements_table(self._interned_id, self.metadata),
             "namespace_binds": create_namespace_binds_table(self._interned_id, self.metadata),
+            "graphs": create_graphs_table(self._interned_id, self.metadata),
         }
 
     def _get_build_command(self, triple, context=None, quoted=False):
@@ -753,7 +842,7 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
         asserted_type_table = self.tables["type_statements"]
         literal_table = self.tables["literal_statements"]
 
-        with self.engine.begin() as connection:
+        with self._begin() as connection:
             try:
                 for table in [quoted_table, asserted_table,
                               asserted_type_table, literal_table]:

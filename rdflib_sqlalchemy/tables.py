@@ -211,3 +211,24 @@ def create_namespace_binds_table(interned_id, metadata):
             mysql_length=MYSQL_MAX_INDEX_LENGTH,
         )
     )
+
+
+def create_graphs_table(interned_id, metadata):
+    """
+    Graphs registered with `add_graph`, so empty graphs are still listed by `contexts`.
+
+    Not in TABLE_NAME_TEMPLATES: stores created before this table existed are still valid,
+    and `open` creates it when missing.
+    """
+    return Table(
+        "{interned_id}_graphs".format(interned_id=interned_id),
+        metadata,
+        Column("id", types.Integer, nullable=False, primary_key=True),
+        Column("context", TermType, nullable=False),
+        Index(
+            "{interned_id}_graphs_context_key".format(interned_id=interned_id),
+            "context",
+            unique=True,
+            mysql_length=191,
+        ),
+    )

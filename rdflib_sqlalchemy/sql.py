@@ -1,5 +1,4 @@
 from rdflib.namespace import RDF
-from six import text_type
 from sqlalchemy.sql import expression, functions
 
 from rdflib_sqlalchemy.constants import (
@@ -63,7 +62,7 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
             else:
                 raise ValueError('Unrecognized table type {}'.format(tableType))
             select_clause = expression.select(*[functions.count().label('aCount')]).select_from(
-                expression.select(*cols).where(whereClause).distinct().select_from(table))
+                expression.select(*cols).where(whereClause).distinct().select_from(table).subquery())
         elif select_type == CONTEXT_SELECT:
             select_clause = expression.select(table.c.context)
             if whereClause is not None:
@@ -76,7 +75,7 @@ def union_select(select_components, distinct=False, select_type=TRIPLE_SELECT):
             select_clause = expression.select(
                 *[table.c.id.label("id"),
                  table.c.member.label("subject"),
-                 expression.literal(text_type(RDF.type)).label("predicate"),
+                 expression.literal(str(RDF.type)).label("predicate"),
                  table.c.klass.label("object"),
                  table.c.context.label("context"),
                  table.c.termComb.label("termcomb"),
