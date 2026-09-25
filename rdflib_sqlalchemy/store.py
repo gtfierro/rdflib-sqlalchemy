@@ -443,7 +443,9 @@ class SQLAlchemy(Store, SQLGeneratorMixin, StatisticsMixin):
                     # Need to check rdf:type and quoted partitions (in addition
                     # perhaps)
                     clause = self.build_clause(asserted_type_table, subject, RDF.type, obj, context, True)
-                    query = asserted_type_table.delete().where(clause) if clause is not None else asserted_type_table.delete()
+                    query = asserted_type_table.delete()
+                    if clause is not None:
+                        query = query.where(clause)
                     connection.execute(query)
 
                     clause = self.build_clause(quoted_table, subject, predicate, obj, context)
