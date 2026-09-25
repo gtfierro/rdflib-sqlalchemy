@@ -6,5 +6,5 @@ git log --format=%s -n 1 "$HEAD_REV" | grep -q '^MINOR:' && exit 0
 date=$(date +"%Y%m%d%H%M%S")
 sed -i -r 's/^version = "([^"]+)(\.dev|a)0"$/version = "\1\2'$date'"/' pyproject.toml
 git diff --quiet pyproject.toml && { echo "Not a .dev0/a0 version (release?); skipping upload"; exit 0; }
-python setup.py egg_info sdist bdist_wheel
-twine upload -c "Built by CI. Uploaded after $(date +"%Y-%m-%d %H:%M:%S")" dist/brickschema_rdflib_sqlalchemy-*.tar.gz dist/brickschema_rdflib_sqlalchemy-*.whl
+uv build --no-sources
+uv publish dist/brickschema_rdflib_sqlalchemy-*.tar.gz dist/brickschema_rdflib_sqlalchemy-*.whl

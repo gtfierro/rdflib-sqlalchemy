@@ -33,7 +33,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install tox tox-gh-actions coveralls
-        python -m pip install --upgrade wheel # stop pip complaining about a setup.py install
         sudo apt-get install python3-dev
         pip install .
     - name: Test with tox
@@ -81,15 +80,10 @@ jobs:
           || startsWith(github.ref, 'refs/heads/release/'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python 3
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3
-      - name: Install Deploy Dependencies
-        run: pip install wheel twine setuptools
+      - uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.2.0
       - name: Deploy
         run: ./deploy.sh
         env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          UV_PUBLISH_TOKEN: ${{ secrets.TWINE_PASSWORD }}

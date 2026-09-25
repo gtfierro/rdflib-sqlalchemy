@@ -1,6 +1,5 @@
 include README.md CONTRIBUTORS.md
 recursive-include rdflib_sqlalchemy *.py
-include setup.*
 global-exclude *.py[cod]
 graft test
 prune test/__pycache__
