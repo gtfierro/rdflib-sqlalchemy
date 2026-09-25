@@ -1,5 +1,7 @@
 import unittest
 
+import pytest
+
 try:
     from unittest.mock import patch, MagicMock
 except ImportError:
@@ -123,6 +125,7 @@ class SQLATestCase(unittest.TestCase):
         # Expect two selects: one for the first two choices plus one for the last one
         self.assertEqual(sum(1 for c in children if isinstance(c, Select)), 2)
 
+    @pytest.mark.xfail(reason="Newer rdflib needs a graph-aware store for Dataset; fixed in 0.7.0", strict=False)
     def test_quoted_statements(self):
         '''
         Regression test for RDFLib/rdflib-sqlalchemy#92

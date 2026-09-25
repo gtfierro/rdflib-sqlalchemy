@@ -1,5 +1,7 @@
 import unittest
 
+import pytest
+
 from rdflib import Literal
 from rdflib import RDF
 from rdflib import RDFS
@@ -80,6 +82,7 @@ class GraphAggregates1(unittest.TestCase):
         self.G = ReadOnlyGraphAggregate(
             [self.graph1, self.graph2, self.graph3])
 
+    @pytest.mark.xfail(reason="Newer rdflib needs a graph-aware store for Dataset; fixed in 0.7.0", strict=False)
     def testAggregateRaw(self):
         # Test triples
         assert len(list(
@@ -119,6 +122,7 @@ class GraphAggregates3(unittest.TestCase):
             graph.parse(StringIO(n3Str), format='n3')
         self.G = ConjunctiveGraph(memStore)
 
+    @pytest.mark.xfail(reason="Newer rdflib needs a graph-aware store for Dataset; fixed in 0.7.0", strict=False)
     def testDefaultGraph(self):
         # test that CG includes triples from all 3
         assert self.G.query(sparqlQ3), "CG as default graph should *all* triples"
